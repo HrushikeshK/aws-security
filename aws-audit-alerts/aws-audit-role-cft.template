@@ -1,0 +1,54 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description" : "Create the required IAM Role.",
+    "Parameters" : {
+        "RoleName" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Name of the Role to be created"
+        }
+    },
+    "Resources": {
+        "awsAuditAlertLambdaRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "RoleName": {"Ref": "RoleName"},
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": [ "lambda.amazonaws.com" ]
+                  },
+                  "Action": [ "sts:AssumeRole" ]
+                }]
+              },
+              "Path": "/",
+              "Policies": [{
+                "PolicyName": "awsAuditAlertLambdaPolicy",
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                              "logs:CreateLogStream",
+                              "logs:CreateLogGroup",
+                              "iam:ListAccountAliases",
+                              "logs:PutLogEvents"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                }
+              }]
+            }
+          }
+        },
+    "Outputs": {
+        "RoleArn" : {
+            "Description": "ARN of the Role",  
+            "Value" : { "Fn::GetAtt": ["awsAuditAlertLambdaRole","Arn"] }
+          }
+    }
+}

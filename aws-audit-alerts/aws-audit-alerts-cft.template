@@ -1,0 +1,90 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description" : "Deploy Lambda Function to trigger Slack alert for various AWS IAM and Network events.",
+    "Parameters" : {
+        "SlackWebhookParameter" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Webhook for Slack Channel"
+        },
+        "SlackChannelName" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Name of the slack channel where you want alerts"
+        },
+        "S3Bucket" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Name of the S3 bucket where the lambda is stored"
+        },
+        "S3Key" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Key name of the S3 object"
+        },
+        "LambdaHandler" : {
+            "Type" : "String",
+            "Default" : "",
+            "Description" : "Lambda Handler name E.g: <file_name>.lambda_handler"
+        },
+        "LambdaRoleName" : {
+          "Type" : "String",
+          "Default" : "",
+          "Description" : "Role that will be attached to the lambda"
+      } 
+    },
+    "Resources": {
+      "awsAuditAlertLambda": {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+          "FunctionName": "awsAuditAlert",
+          "Tags": [
+            {
+              "Key": "CreatedBy",
+              "Value": "Security Team"
+            }
+          ],
+          "Handler": {"Ref": "LambdaHandler"},
+          "Environment" : {
+              "Variables": { "WEBHOOK_URL": {"Ref": "SlackWebhookParameter"}, "SLACK_CHANNEL_NAME": {"Ref": "SlackChannelName"} }
+          },
+          "Role":  {"Fn::Join": ["",[{"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/"}, {"Ref": "LambdaRoleName"}]]},
+          "Code": {
+            "S3Bucket": {"Ref": "S3Bucket"},
+            "S3Key": {"Ref": "S3Key"}
+          },
+          "Runtime": "python3.7",
+          "Timeout": 900
+        }
+      },
+    "ScheduledRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "Rule to trigger awsAuditAlert Lambda",
+        "Name" : "awsAuditAlertLambdaEventRule",
+        "EventPattern": {
+          "source": ["aws.iam", "aws.ec2"],
+          "detail-type": ["AWS API Call via CloudTrail"],
+          "detail": {
+              "eventSource": ["iam.amazonaws.com", "ec2.amazonaws.com"],
+              "eventName": ["CreateUser", "DeleteUser", "CreateRole", "DeleteRole", "AttachRolePolicy", "PutRolePolicy", "DetachRolePolicy", "DeleteRolePolicy", "CreateSecurityGroup", "DeleteSecurityGroup", "ModifySecurityGroupRules", "CreateNetworkAcl", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAcl", "DeleteNetworkAclEntry"]
+          }
+      },
+      "State": "ENABLED",
+        "Targets": [{
+          "Arn": { "Fn::GetAtt": ["awsAuditAlertLambda", "Arn"] },
+          "Id": "TargetFunctionV1"
+        }]
+      }
+    },
+      "PermissionForEventsToInvokeLambda": {
+        "Type": "AWS::Lambda::Permission",
+        "Properties": {
+          "FunctionName": { "Ref": "awsAuditAlertLambda" },
+          "Action": "lambda:InvokeFunction",
+          "Principal": "events.amazonaws.com",
+          "SourceArn": { "Fn::GetAtt": ["ScheduledRule", "Arn"] }
+        }
+      }
+    }
+  }
