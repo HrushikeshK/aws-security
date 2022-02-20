@@ -1,0 +1,140 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description" : "Deploy Lambda Function to attach an explicit Deny policy to the users for the resources that are not used for more than 90 days.",
+  "Parameters" : {
+    "SlackWebhookParameter" : {
+      "Type" : "String",
+      "Default" : "",
+      "Description" : "Webhook for Slack Channel"
+    },
+    "SlackChannelName" : {
+        "Type" : "String",
+        "Default" : "",
+        "Description" : "Name of the slack channel where you want alerts"
+      },
+    "WhitelistTag" : {
+        "Type" : "String",
+        "Default" : "enableDenyPolicy:false",
+        "Description" : "List of tags that will be whitelisted."
+      },
+      "S3Bucket" : {
+          "Type" : "String",
+          "Default" : "",
+          "Description" : "Name of the S3 bucket where the lambda is stored"
+      },
+      "S3Key" : {
+          "Type" : "String",
+          "Default" : "",
+          "Description" : "Key name of the S3 object"
+      },
+      "LambdaHandler" : {
+          "Type" : "String",
+          "Default" : "",
+          "Description" : "Lambda Handler name E.g: <file_name>.lambda_handler"
+      }
+  },
+  "Resources": {
+    "overprivilegedUsersDenyLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "overprivilegedUsersDeny",
+        "Tags": [
+          {
+            "Key": "CreatedBy",
+            "Value": "Security Team"
+          }
+        ],
+        "Handler": { "Ref": "LambdaHandler" },
+        "Environment" : {
+            "Variables": { 
+              "WEBHOOK_URL": {"Ref": "SlackWebhookParameter"}, 
+              "SLACK_CHANNEL_NAME": {"Ref": "SlackChannelName"}, 
+              "WHITELIST_TAG": {"Ref": "WhitelistTag"} 
+            }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "overprivilegedUsersDenyLambdaRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": { "Ref": "S3Bucket" },
+          "S3Key": { "Ref": "S3Key" }
+        },
+        "Runtime": "python3.7",
+        "Timeout": 900
+      }
+    },
+    "overprivilegedUsersDenyLambdaRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "RoleName": "overprivilegedUsersDenyLambdaRole",
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [ "lambda.amazonaws.com" ]
+              },
+              "Action": [ "sts:AssumeRole" ]
+            }]
+          },
+          "Path": "/",
+          "Policies": [{
+            "PolicyName": "overprivilegedUsersDenyLambdaPolicy",
+            "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:CreateLogStream",
+                            "iam:GenerateServiceLastAccessedDetails",
+                            "iam:ListRoles",
+                            "iam:ListUsers",
+                            "iam:GetServiceLastAccessedDetails",
+                            "iam:PutUserPolicy",
+                            "iam:GetPolicy",
+                            "iam:DeletePolicy",
+                            "iam:CreatePolicy",
+                            "iam:AttachUserPolicy",
+                            "iam:DetachUserPolicy",
+                            "iam:GetPolicyVersion",
+                            "logs:CreateLogGroup",
+                            "iam:ListAttachedUserPolicies",
+                            "iam:ListAccountAliases",
+                            "iam:GetUser",
+                            "logs:PutLogEvents"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
+          }]
+        }
+      },
+      "ScheduledRule": {
+        "Type": "AWS::Events::Rule",
+        "Properties": {
+          "Description": "Rule to trigger overprivilegedUsersDeny Lambda",
+          "Name" : "overprivilegedUsersDenyLambdaRule",
+          "ScheduleExpression": "cron(0 9 * * ? *)",
+          "State": "ENABLED",
+          "Targets": [{
+            "Arn": { "Fn::GetAtt": ["overprivilegedUsersDenyLambda", "Arn"] },
+            "Id": "TargetFunctionV1"
+          }]
+        }
+      },
+      "PermissionForEventsToInvokeLambda": {
+        "Type": "AWS::Lambda::Permission",
+        "Properties": {
+          "FunctionName": { "Ref": "overprivilegedUsersDenyLambda" },
+          "Action": "lambda:InvokeFunction",
+          "Principal": "events.amazonaws.com",
+          "SourceArn": { "Fn::GetAtt": ["ScheduledRule", "Arn"] }
+        }
+      }
+  }
+}
