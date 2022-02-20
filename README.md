@@ -1,5 +1,5 @@
 # aws-security
 All things AWS Security. Mostly Automations
 
-## Slack Emojis
+## AWS Slack Emojis
 * Resource: https://github.com/Surgo/aws_emojipacks
