@@ -1,0 +1,126 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description" : "Deploy Lambda Function to deploy agent to EC2 and notify over slack whenever a new EC2 instance is spun.",
+  "Parameters" : {
+    "SlackWebhook" : {
+      "Type" : "String",
+      "Default" : "",
+      "Description" : "Slack webhook to send alerts"
+    },
+    "S3Bucket" : {
+        "Type" : "String",
+        "Default" : "",
+        "Description" : "Name of the S3 bucket where the lambda is stored"
+    },
+    "S3Key" : {
+        "Type" : "String",
+        "Default" : "",
+        "Description" : "Key name of the S3 object"
+    },
+    "LambdaHandler" : {
+        "Type" : "String",
+        "Default" : "",
+        "Description" : "Lambda Handler name E.g: <file_name>.lambda_handler"
+    }
+  },
+  "Resources": {
+    "CortexInstallLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "CortexInstall",
+        "Tags": [
+          {
+            "Key": "CreatedBy",
+            "Value": "Security Team"
+          }
+        ],
+        "Handler": { "Ref": "LambdaHandler" },
+        "Environment" : {
+            "Variables": { "SLACK_WEBHOOK": {"Ref": "SlackWebhook"} }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "CortexInstallLambdaRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": { "Ref": "S3Bucket" },
+          "S3Key": { "Ref": "S3Key" }
+        },
+        "Runtime": "python3.8",
+        "Timeout": 900
+      }
+    },
+    "CortexInstallLambdaRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "RoleName": "CortexInstallLambdaRole",
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [ "lambda.amazonaws.com" ]
+              },
+              "Action": [ "sts:AssumeRole" ]
+            }]
+          },
+          "Path": "/",
+          "ManagedPolicyArns": [
+            "arn:aws:iam::aws:policy/AmazonEC2FullAccess",
+            "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+          ],
+          "Policies": [{
+            "PolicyName": "CortexInstallLambdaPolicy",
+            "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:CreateLogStream",
+                          "logs:CreateLogGroup",
+                          "iam:ListAccountAliases",
+                          "logs:PutLogEvents",
+                          "iam:ListAccountAliases",
+                          "iam:ListAttachedRolePolicies",
+                          "iam:PassRole"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
+          }]
+        }
+      },
+      "ScheduledRule": {
+        "Type": "AWS::Events::Rule",
+        "Properties": {
+          "Description": "Rule to trigger CortexInstall Lambda",
+          "Name" : "CortexInstallLambdaRule",
+          "EventPattern": {
+            "source": ["aws.ec2"],
+            "detail-type": ["EC2 Instance State-change Notification"],
+            "detail": {
+              "state": ["running"]
+          }
+        },
+          "State": "ENABLED",
+          "Targets": [{
+            "Arn": { "Fn::GetAtt": ["CortexInstallLambda", "Arn"] },
+            "Id": "TargetFunctionV1"
+          }]
+        }
+      },
+      "PermissionForEventsToInvokeLambda": {
+        "Type": "AWS::Lambda::Permission",
+        "Properties": {
+          "FunctionName": { "Ref": "CortexInstallLambda" },
+          "Action": "lambda:InvokeFunction",
+          "Principal": "events.amazonaws.com",
+          "SourceArn": { "Fn::GetAtt": ["ScheduledRule", "Arn"] }
+        }
+      }
+  }
+}
